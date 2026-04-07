@@ -9,16 +9,10 @@
 export const CUSTOM_BUILDINGS = [
   // ── COMPLETED — missing from Wikidata ──
   {
-    id: "custom_karlatornet", name: "Karlatornet", city: "Gothenburg", country: "Sweden",
-    height: 246, floors: 73, year: 2023, use: "Mixed", style: "Modern",
-    lat: 57.7065, lng: 11.938, color: "#7BA0B8", wiki: "Karlatornet",
-    architect: "Wingårdhs", status: "completed",
-  },
-  {
-    id: "custom_transamerica", name: "Transamerica Pyramid", city: "San Francisco", country: "United States",
-    height: 260, floors: 48, year: 1972, use: "Office", style: "Modern",
-    lat: 37.7952, lng: -122.4028, color: "#C8B896", wiki: "Transamerica_Pyramid",
-    architect: "William Pereira", status: "completed",
+    id: "custom_uniriese", name: "City-Hochhaus Leipzig", city: "Leipzig", country: "Germany",
+    height: 142.5, floors: 34, year: 1972, use: "Office", style: "Modern",
+    lat: 51.337867, lng: 12.379081, color: "#7BA0B8", wiki: "City-Hochhaus Leipzig",
+    architect: "Hermann Henselmann", status: "completed",
   },
 
   // ── UNDER CONSTRUCTION ──
