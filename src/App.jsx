@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { FALLBACK_BUILDINGS, DECADES, USES, REGIONS, getRegion, getDecade, getStatusLabel, computeTallestBadges, assignColor } from "./data/buildings";
 import { CUSTOM_BUILDINGS } from "./data/custom-buildings";
 import { useWikidata } from "./hooks/useWikidata";
@@ -11,6 +11,44 @@ import CompareView from "./components/CompareView";
 import DetailPage from "./components/DetailPage";
 
 function loadFavs() { try { return JSON.parse(localStorage.getItem("skyline_favs") || "[]"); } catch { return []; } }
+
+// ── Country flag emoji helper ──
+const COUNTRY_FLAGS = {
+  "uae":"🇦🇪","united arab emirates":"🇦🇪","saudi arabia":"🇸🇦","qatar":"🇶🇦","bahrain":"🇧🇭","kuwait":"🇰🇼","oman":"🇴🇲",
+  "china":"🇨🇳","taiwan":"🇹🇼","south korea":"🇰🇷","malaysia":"🇲🇾","japan":"🇯🇵","vietnam":"🇻🇳","indonesia":"🇮🇩","philippines":"🇵🇭","singapore":"🇸🇬","hong kong":"🇭🇰","india":"🇮🇳","thailand":"🇹🇭",
+  "usa":"🇺🇸","united states":"🇺🇸","canada":"🇨🇦","mexico":"🇲🇽","panama":"🇵🇦",
+  "uk":"🇬🇧","united kingdom":"🇬🇧","germany":"🇩🇪","france":"🇫🇷","spain":"🇪🇸","italy":"🇮🇹","poland":"🇵🇱","russia":"🇷🇺","turkey":"🇹🇷","netherlands":"🇳🇱","sweden":"🇸🇪","norway":"🇳🇴","denmark":"🇩🇰","finland":"🇫🇮","austria":"🇦🇹","switzerland":"🇨🇭","belgium":"🇧🇪","ireland":"🇮🇪","portugal":"🇵🇹","czech republic":"🇨🇿","romania":"🇷🇴","hungary":"🇭🇺","greece":"🇬🇷",
+  "australia":"🇦🇺","new zealand":"🇳🇿","brazil":"🇧🇷","argentina":"🇦🇷","chile":"🇨🇱","colombia":"🇨🇴","egypt":"🇪🇬","south africa":"🇿🇦","nigeria":"🇳🇬","kenya":"🇰🇪","israel":"🇮🇱",
+};
+function getFlag(country) {
+  if (!country) return "";
+  const f = COUNTRY_FLAGS[country.toLowerCase()];
+  return f || "";
+}
+
+// ── Animated number component ──
+function AnimNum({ value, duration = 500 }) {
+  const [display, setDisplay] = useState(value);
+  const rafRef = useRef(null);
+  const startRef = useRef({ val: value, time: 0 });
+  useEffect(() => {
+    const from = display;
+    const to = value;
+    if (from === to) return;
+    const startTime = performance.now();
+    startRef.current = { val: from, time: startTime };
+    const animate = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+      setDisplay(Math.round(from + (to - from) * eased));
+      if (progress < 1) rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [value, duration]);
+  return display;
+}
 
 function mergeCustom(wdBuildings) {
   const base = wdBuildings.length > 0 ? wdBuildings : FALLBACK_BUILDINGS;
@@ -25,6 +63,7 @@ function mergeCustom(wdBuildings) {
 }
 
 function loc(b) { return [b.city, b.country].filter(Boolean).join(", ") || "Unknown"; }
+function locWithFlag(b) { const flag = getFlag(b.country); return (flag ? flag + " " : "") + loc(b); }
 
 export default function App() {
   const { t, mode, toggle: toggleTheme } = useTheme();
@@ -51,6 +90,8 @@ export default function App() {
   const [favs, setFavs] = useState(loadFavs);
   const [showFavsOnly, setShowFavsOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [hoveredTower, setHoveredTower] = useState(null);
+  const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [ready, setReady] = useState(false);
 
   useEffect(() => { setTimeout(() => setReady(true), 60); }, []);
@@ -179,6 +220,8 @@ export default function App() {
         @keyframes su{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
         @keyframes fi{from{opacity:0}to{opacity:1}}
         @keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes shimmer{0%{background-position:-200px 0}100%{background-position:200px 0}}
+        @keyframes tipIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
         .p{padding:4px 10px;border-radius:16px;border:1px solid ${t.pillBorder};background:${t.pill};color:${t.pillText};font-size:10.5px;cursor:pointer;transition:all .15s;white-space:nowrap;font-family:inherit}
         .p:hover{background:${t.pillHover};color:${t.text}}.p.a{background:${t.accentBg};border-color:${t.accentBorder};color:${t.accent}}
         .tc{cursor:pointer;transition:transform .15s;display:flex;flex-direction:column;align-items:center}.tc:hover{transform:translateY(-3px)}
@@ -203,9 +246,12 @@ export default function App() {
               <span style={{ fontSize: 8, color: t.textGhost }}>{wd.loading ? "loading wikidata…" : `${allBuildings.length} buildings`}{imgCount > 0 && ` · ${imgCount}📷`}</span>
             </div>
           </div>
-          <p style={{ fontSize: 10.5, color: t.textFaint, marginTop: 1 }}>
-            {stats.total} shown · {stats.cities} cities · {stats.countries} countries · avg {stats.avg}m
-            {favs.length > 0 && ` · ${favs.length} ♥`}
+          <p style={{ fontSize: 11, color: t.textMuted, marginTop: 4, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span><span style={{ fontWeight: 600, color: t.text, fontSize: 13 }}><AnimNum value={stats.total} /></span> buildings</span>
+            <span><span style={{ fontWeight: 600, color: t.text, fontSize: 13 }}><AnimNum value={stats.cities} /></span> cities</span>
+            <span><span style={{ fontWeight: 600, color: t.text, fontSize: 13 }}><AnimNum value={stats.countries} /></span> countries</span>
+            <span>avg <span style={{ fontWeight: 600, color: t.accent, fontSize: 13 }}><AnimNum value={stats.avg} /></span>m</span>
+            {favs.length > 0 && <span style={{ color: t.fav }}>{favs.length} ♥</span>}
           </p>
         </div>
 
@@ -308,7 +354,7 @@ export default function App() {
                     {detail.status === "under_construction" && <span style={{ fontSize: 8, color: "#ffcc88", background: "rgba(255,180,100,.1)", padding: "1px 5px", borderRadius: 4 }}>⚒ U/C</span>}
                     {detail.status === "planned" && <span style={{ fontSize: 8, color: t.textFaint, background: t.surface, padding: "1px 5px", borderRadius: 4 }}>📐 Planned</span>}
                   </div>
-                  <p style={{ fontSize: 10.5, color: t.textMuted, marginTop: 2 }}>{loc(detail)}</p>
+                  <p style={{ fontSize: 10.5, color: t.textMuted, marginTop: 2 }}>{locWithFlag(detail)}</p>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   <button onClick={() => toggleFav(detail.id)} style={{ background: "none", border: "none", color: favs.includes(detail.id) ? t.fav : t.textFaint, cursor: "pointer", fontSize: 15 }}>{favs.includes(detail.id) ? "♥" : "♡"}</button>
@@ -344,47 +390,120 @@ export default function App() {
 
         {/* SKYLINE */}
         {view === "skyline" && (
-          <div style={{ animation: ready ? "su .4s ease .08s both" : "none", display: "flex", alignItems: "flex-end", gap: 2, overflowX: "auto", paddingBottom: 8, minHeight: 280, borderBottom: `1px solid ${t.border}` }}>
-            {filtered.map((s) => (
-              <div key={s.id} className="tc" onClick={() => handleSelect(s.id)} onDoubleClick={() => openDetail(s.id)}
-                style={{ opacity: compareMode && !compareIds.includes(s.id) ? .3 : s.status !== "completed" ? .5 : 1, position: "relative" }}>
-                {tallestBadges.has(s.id) && <div style={{ fontSize: 5, position: "absolute", top: -2, right: -2, zIndex: 1 }}>🏆</div>}
-                {favs.includes(s.id) && <div style={{ fontSize: 5, color: t.fav, position: "absolute", top: -2, left: -1 }}>♥</div>}
-                <Tower height={s.height} maxH={maxH} color={s.color} sel={selected === s.id || compareIds.includes(s.id)} floors={s.floors} />
-                <div style={{ fontSize: 6, color: selected === s.id ? t.accent : t.textGhost, textAlign: "center", maxWidth: 26, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{s.height}m</div>
+          <div style={{ animation: ready ? "su .4s ease .08s both" : "none", position: "relative", minHeight: 300 }}>
+            {/* Horizon haze */}
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 80, background: mode === "dark"
+              ? "linear-gradient(180deg, transparent 0%, rgba(100,160,255,.03) 40%, rgba(100,160,255,.06) 100%)"
+              : "linear-gradient(180deg, transparent 0%, rgba(42,106,181,.03) 40%, rgba(42,106,181,.06) 100%)", pointerEvents: "none", zIndex: 0 }} />
+            {/* Ground line */}
+            <div style={{ position: "absolute", bottom: 22, left: 0, right: 0, height: 1, background: mode === "dark"
+              ? "linear-gradient(90deg, transparent, rgba(100,160,255,.15) 20%, rgba(100,160,255,.15) 80%, transparent)"
+              : "linear-gradient(90deg, transparent, rgba(42,106,181,.12) 20%, rgba(42,106,181,.12) 80%, transparent)", zIndex: 1 }} />
+            {/* Ground glow */}
+            <div style={{ position: "absolute", bottom: 18, left: 0, right: 0, height: 6, background: mode === "dark"
+              ? "linear-gradient(90deg, transparent, rgba(100,160,255,.04) 20%, rgba(100,160,255,.04) 80%, transparent)"
+              : "linear-gradient(90deg, transparent, rgba(42,106,181,.03) 20%, rgba(42,106,181,.03) 80%, transparent)", filter: "blur(4px)", pointerEvents: "none", zIndex: 1 }} />
+
+            {/* Skeleton loading */}
+            {wd.loading && !filtered.length && (
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 3, paddingBottom: 24, minHeight: 280, justifyContent: "center" }}>
+                {Array.from({ length: 20 }).map((_, i) => {
+                  const h = 60 + Math.random() * 160;
+                  return <div key={i} style={{ width: 8 + Math.random() * 6, height: h, borderRadius: 1, background: `linear-gradient(90deg, ${t.surface} 0%, ${t.surfaceHover} 50%, ${t.surface} 100%)`, backgroundSize: "400px 100%", animation: "shimmer 1.5s ease-in-out infinite", animationDelay: `${i * 0.05}s` }} />;
+                })}
               </div>
-            ))}
-            {!filtered.length && <div style={{ padding: 28, color: t.textFaint, fontSize: 12, width: "100%", textAlign: "center" }}>No results</div>}
+            )}
+
+            {/* Towers */}
+            {(!wd.loading || filtered.length > 0) && (
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 2, overflowX: "auto", paddingBottom: 24, minHeight: 280, position: "relative", zIndex: 2 }}>
+                {filtered.map((s, idx) => {
+                  const rank = idx + 1;
+                  const showRank = rank <= 3 && sortBy === "height";
+                  const isHovered = hoveredTower === s.id;
+                  return (
+                    <div key={s.id} className="tc" onClick={() => handleSelect(s.id)} onDoubleClick={() => openDetail(s.id)}
+                      onMouseEnter={(e) => { setHoveredTower(s.id); const rect = e.currentTarget.getBoundingClientRect(); setHoverPos({ x: rect.left + rect.width / 2, y: rect.top - 8 }); }}
+                      onMouseLeave={() => setHoveredTower(null)}
+                      style={{ opacity: compareMode && !compareIds.includes(s.id) ? .3 : s.status !== "completed" ? .5 : 1, position: "relative" }}>
+                      {/* Rank badge */}
+                      {showRank && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", fontSize: 7, fontWeight: 700, color: rank === 1 ? "#ffd700" : rank === 2 ? "#c0c0c0" : "#cd7f32", background: mode === "dark" ? "rgba(0,0,0,.6)" : "rgba(255,255,255,.8)", borderRadius: 6, padding: "1px 4px", zIndex: 3, lineHeight: 1.3, border: `1px solid ${rank === 1 ? "rgba(255,215,0,.3)" : rank === 2 ? "rgba(192,192,192,.3)" : "rgba(205,127,50,.3)"}` }}>#{rank}</div>}
+                      {tallestBadges.has(s.id) && !showRank && <div style={{ fontSize: 5, position: "absolute", top: -2, right: -2, zIndex: 1 }}>🏆</div>}
+                      {favs.includes(s.id) && <div style={{ fontSize: 5, color: t.fav, position: "absolute", top: -2, left: -1 }}>♥</div>}
+                      {/* Building glow */}
+                      <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: 20, height: 8, background: s.color, opacity: isHovered ? 0.15 : 0.05, filter: "blur(6px)", borderRadius: "50%", transition: "opacity .2s" }} />
+                      <Tower height={s.height} maxH={maxH} color={s.color} sel={selected === s.id || compareIds.includes(s.id)} floors={s.floors} />
+                      <div style={{ fontSize: 6, color: selected === s.id ? t.accent : t.textGhost, textAlign: "center", maxWidth: 26, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 1 }}>{s.height}m</div>
+                    </div>
+                  );
+                })}
+                {!filtered.length && <div style={{ padding: 28, color: t.textFaint, fontSize: 12, width: "100%", textAlign: "center" }}>No results</div>}
+              </div>
+            )}
+
+            {/* Hover tooltip */}
+            {hoveredTower && (() => {
+              const hb = allBuildings.find((b) => b.id === hoveredTower);
+              if (!hb) return null;
+              return (
+                <div style={{ position: "fixed", left: hoverPos.x, top: hoverPos.y, transform: "translate(-50%, -100%)", background: t.tooltipBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: "6px 10px", boxShadow: `0 4px 16px ${mode === "dark" ? "rgba(0,0,0,.5)" : "rgba(0,0,0,.1)"}`, zIndex: 100, pointerEvents: "none", animation: "tipIn .12s ease", maxWidth: 200, backdropFilter: "blur(8px)" }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: t.textStrong, lineHeight: 1.3 }}>{hb.name}</div>
+                  <div style={{ fontSize: 9, color: t.textMuted, marginTop: 1 }}>{locWithFlag(hb)}</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 3 }}>
+                    <span style={{ fontSize: 10, color: t.accent, fontWeight: 600 }}>{hb.height}m</span>
+                    {hb.floors && <span style={{ fontSize: 9, color: t.textMuted }}>{hb.floors}fl</span>}
+                    {hb.year && <span style={{ fontSize: 9, color: t.textMuted }}>{hb.year}</span>}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
         {/* CARDS */}
         {view === "cards" && (
           <div className="cg" style={{ animation: "fi .2s" }}>
-            {filtered.map((s) => (
-              <div key={s.id} onClick={() => openDetail(s.id)} style={{
-                background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: 10,
-                overflow: "hidden", cursor: "pointer", transition: "transform .15s", boxShadow: t.shadow,
-                opacity: s.status !== "completed" ? 0.75 : 1,
-              }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = ""; }}>
-                <div style={{ height: 100, background: `linear-gradient(135deg, ${s.color}22, ${s.color}08)`, position: "relative", overflow: "hidden" }}>
-                  {images[s.id] ? <img src={images[s.id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                    : <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", height: "100%", paddingBottom: 4 }}><Tower height={s.height} maxH={maxH} color={s.color} floors={s.floors} scale={.32} /></div>}
-                  {favs.includes(s.id) && <div style={{ position: "absolute", top: 5, right: 6, fontSize: 10, color: t.fav }}>♥</div>}
-                  {tallestBadges.has(s.id) && <div style={{ position: "absolute", top: 5, left: 6, fontSize: 9 }}>🏆</div>}
-                  {s.status !== "completed" && <div style={{ position: "absolute", top: 5, right: favs.includes(s.id) ? 22 : 6, fontSize: 8, color: "#ffcc88", background: "rgba(0,0,0,.5)", padding: "1px 5px", borderRadius: 4 }}>{s.status === "under_construction" ? "⚒" : "📐"}</div>}
-                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 32, background: `linear-gradient(transparent, ${t.mode === "dark" ? "rgba(6,10,16,.7)" : "rgba(255,255,255,.7)"})` }} />
-                  <div style={{ position: "absolute", bottom: 5, left: 8, fontSize: 12, fontWeight: 700, color: t.textStrong }}>{s.height}m</div>
-                </div>
-                <div style={{ padding: "6px 8px 8px" }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 600, color: t.text, lineHeight: 1.25 }}>{s.name}</div>
-                  <div style={{ fontSize: 9, color: t.textMuted, marginTop: 2 }}>{loc(s)} · {s.year || "—"}</div>
-                  {s.architect && <div style={{ fontSize: 8.5, color: t.textFaint, marginTop: 1 }}>✎ {s.architect}</div>}
+            {/* Skeleton cards while loading */}
+            {wd.loading && !filtered.length && Array.from({ length: 8 }).map((_, i) => (
+              <div key={`sk-${i}`} style={{ background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ height: 150, background: `linear-gradient(90deg, ${t.surface} 0%, ${t.surfaceHover} 50%, ${t.surface} 100%)`, backgroundSize: "400px 100%", animation: "shimmer 1.5s ease-in-out infinite", animationDelay: `${i * 0.08}s` }} />
+                <div style={{ padding: "10px 10px 12px" }}>
+                  <div style={{ height: 10, width: "70%", borderRadius: 4, background: t.surface, marginBottom: 6 }} />
+                  <div style={{ height: 8, width: "50%", borderRadius: 4, background: t.surface }} />
                 </div>
               </div>
             ))}
+            {filtered.map((s, idx) => {
+              const rank = idx + 1;
+              const showRank = rank <= 3 && sortBy === "height";
+              return (
+                <div key={s.id} onClick={() => openDetail(s.id)} style={{
+                  background: t.cardBg, border: `1px solid ${t.border}`, borderRadius: 10,
+                  overflow: "hidden", cursor: "pointer", transition: "transform .15s, box-shadow .15s", boxShadow: t.shadow,
+                  opacity: s.status !== "completed" ? 0.75 : 1,
+                }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = `0 6px 20px ${mode === "dark" ? "rgba(0,0,0,.4)" : "rgba(0,0,0,.12)"}`;}}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = ""; e.currentTarget.style.boxShadow = t.shadow; }}>
+                  <div style={{ height: 150, background: `linear-gradient(135deg, ${s.color}22, ${s.color}08)`, position: "relative", overflow: "hidden" }}>
+                    {images[s.id] ? <img src={images[s.id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", height: "100%", paddingBottom: 8 }}><Tower height={s.height} maxH={maxH} color={s.color} floors={s.floors} scale={.4} /></div>}
+                    {favs.includes(s.id) && <div style={{ position: "absolute", top: 6, right: 7, fontSize: 11, color: t.fav, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>♥</div>}
+                    {showRank && <div style={{ position: "absolute", top: 6, left: 7, fontSize: 9, fontWeight: 700, color: rank === 1 ? "#ffd700" : rank === 2 ? "#c0c0c0" : "#cd7f32", background: "rgba(0,0,0,.55)", borderRadius: 6, padding: "1px 5px", backdropFilter: "blur(4px)" }}>#{rank}</div>}
+                    {!showRank && tallestBadges.has(s.id) && <div style={{ position: "absolute", top: 6, left: 7, fontSize: 10 }}>🏆</div>}
+                    {s.status !== "completed" && <div style={{ position: "absolute", top: 6, right: favs.includes(s.id) ? 24 : 7, fontSize: 8, color: "#ffcc88", background: "rgba(0,0,0,.5)", padding: "1px 5px", borderRadius: 4 }}>{s.status === "under_construction" ? "⚒" : "📐"}</div>}
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 48, background: `linear-gradient(transparent, ${mode === "dark" ? "rgba(6,10,16,.8)" : "rgba(255,255,255,.8)"})` }} />
+                    <div style={{ position: "absolute", bottom: 6, left: 9, right: 9 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: t.textStrong, textShadow: mode === "dark" ? "0 1px 4px rgba(0,0,0,.6)" : "none" }}>{s.height}m</div>
+                    </div>
+                  </div>
+                  <div style={{ padding: "8px 10px 10px" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: t.text, lineHeight: 1.3 }}>{s.name}</div>
+                    <div style={{ fontSize: 9.5, color: t.textMuted, marginTop: 3 }}>{locWithFlag(s)} · {s.year || "—"}</div>
+                    {s.architect && <div style={{ fontSize: 8.5, color: t.textFaint, marginTop: 2 }}>✎ {s.architect}</div>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -402,7 +521,22 @@ export default function App() {
             <div className="lr" style={{ fontSize: 7.5, color: t.textGhost, textTransform: "uppercase", letterSpacing: 1.2, cursor: "default" }}>
               <span /><span>Building</span><span>Location</span><span>Height</span><span>Fl</span><span>Year</span><span />
             </div>
-            {filtered.map((s) => (
+            {/* Skeleton rows */}
+            {wd.loading && !filtered.length && Array.from({ length: 10 }).map((_, i) => (
+              <div key={`sk-${i}`} className="lr" style={{ cursor: "default" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 5, background: `linear-gradient(90deg, ${t.surface} 0%, ${t.surfaceHover} 50%, ${t.surface} 100%)`, backgroundSize: "400px 100%", animation: "shimmer 1.5s ease-in-out infinite", animationDelay: `${i * 0.06}s` }} />
+                <div style={{ height: 9, width: "60%", borderRadius: 4, background: t.surface }} />
+                <div style={{ height: 8, width: "40%", borderRadius: 4, background: t.surface }} />
+                <div style={{ height: 8, width: 30, borderRadius: 4, background: t.surface }} />
+                <div style={{ height: 8, width: 16, borderRadius: 4, background: t.surface }} />
+                <div style={{ height: 8, width: 24, borderRadius: 4, background: t.surface }} />
+                <span />
+              </div>
+            ))}
+            {filtered.map((s, idx) => {
+              const rank = idx + 1;
+              const showRank = rank <= 3 && sortBy === "height";
+              return (
               <div key={s.id} className="lr" onClick={() => handleSelect(s.id)} onDoubleClick={() => openDetail(s.id)}
                 style={{ background: (selected === s.id || compareIds.includes(s.id)) ? t.accentBg : "transparent" }}>
                 <Thumb src={images[s.id]} color={s.color} height={s.height} maxH={maxH} size={30} radius={5} />
@@ -410,19 +544,21 @@ export default function App() {
                   {compareMode && <div style={{ width: 11, height: 11, borderRadius: 3, border: `1.5px solid ${compareIds.includes(s.id) ? t.compare : t.border}`, background: compareIds.includes(s.id) ? t.compareBg : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, color: t.compare, flexShrink: 0 }}>{compareIds.includes(s.id) ? "✓" : ""}</div>}
                   <div>
                     <div style={{ fontSize: 11, color: t.text, fontWeight: 500, display: "flex", gap: 3, alignItems: "center" }}>
-                      {s.name} {tallestBadges.has(s.id) && <span style={{ fontSize: 8 }}>🏆</span>}
+                      {showRank && <span style={{ fontSize: 8, fontWeight: 700, color: rank === 1 ? "#ffd700" : rank === 2 ? "#c0c0c0" : "#cd7f32" }}>#{rank}</span>}
+                      {s.name} {tallestBadges.has(s.id) && !showRank && <span style={{ fontSize: 8 }}>🏆</span>}
                       {s.status !== "completed" && <span style={{ fontSize: 7, color: "#ffcc88" }}>{s.status === "under_construction" ? "⚒" : "📐"}</span>}
                     </div>
                     <div style={{ fontSize: 8.5, color: t.textFaint }}>{s.architect || s.style || ""}</div>
                   </div>
                 </div>
-                <div style={{ color: t.textMuted, fontSize: 10 }}>{loc(s)}</div>
+                <div style={{ color: t.textMuted, fontSize: 10 }}>{locWithFlag(s)}</div>
                 <div style={{ color: t.accent, fontWeight: 500, fontSize: 10.5 }}>{s.height}m</div>
                 <div style={{ color: t.textMuted, fontSize: 10 }}>{s.floors || "—"}</div>
                 <div style={{ color: t.textMuted, fontSize: 10 }}>{s.year || "—"}</div>
                 <button onClick={(e) => { e.stopPropagation(); toggleFav(s.id); }} style={{ background: "none", border: "none", color: favs.includes(s.id) ? t.fav : t.textGhost, cursor: "pointer", fontSize: 11, padding: 0 }}>{favs.includes(s.id) ? "♥" : "♡"}</button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
