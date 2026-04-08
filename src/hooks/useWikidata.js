@@ -102,24 +102,33 @@ function buildingsFromRows(seen, startIndex) {
 }
 
 async function runQuery(sparql, signal) {
-  const url = `/api/wikidata?format=json&query=${encodeURIComponent(sparql)}`;
-  
-  const res = await fetch(url, { 
-    method: "GET",
-    headers: { "Accept": "application/sparql-results+json" }, 
-    signal 
-  });
+  const params = `format=json&query=${encodeURIComponent(sparql)}`;
 
-  // This is the missing piece:
-  const contentType = res.headers.get("content-type");
-if (!res.ok || !contentType || !contentType.toLowerCase().includes("json")) {
-      const text = await res.text();
-    console.error("Proxy Error Details:", text.slice(0, 200)); // See the actual error HTML
-    throw new Error(`Proxy failed: ${res.status}. Expected JSON but got ${contentType}`);
+  // Try Netlify proxy first, fall back to direct CORS fetch
+  const urls = [
+    `/api/wikidata?${params}`,
+    `https://query.wikidata.org/sparql?${params}`,
+  ];
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/sparql-results+json" },
+        signal,
+      });
+      const ct = res.headers.get("content-type") || "";
+      if (!res.ok || !ct.toLowerCase().includes("json")) {
+        console.warn(`[Skyline] ${url.slice(0, 40)}... returned ${res.status} (${ct}), trying next`);
+        continue;
+      }
+      const data = await res.json();
+      return data?.results?.bindings || [];
+    } catch (e) {
+      if (e.name === "AbortError") throw e; // propagate timeouts
+      console.warn(`[Skyline] ${url.slice(0, 40)}... failed: ${e.message}, trying next`);
+    }
   }
-
-  const data = await res.json();
-  return data?.results?.bindings || [];
+  throw new Error("All Wikidata endpoints failed");
 }
 
 export function useWikidata() {
