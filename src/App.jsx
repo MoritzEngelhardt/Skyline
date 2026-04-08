@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { supabase } from "./supabaseClient";
+import Auth from "./Auth";
 import { FALLBACK_BUILDINGS, DECADES, USES, REGIONS, getRegion, getDecade, getStatusLabel, computeTallestBadges, assignColor } from "./data/buildings";
 import { CUSTOM_BUILDINGS } from "./data/custom-buildings";
 import { useWikidata } from "./hooks/useWikidata";
@@ -76,11 +78,13 @@ export default function App() {
   const tallestBadges = useMemo(() => computeTallestBadges(allBuildings), [allBuildings]);
   const { images, extracts } = useWikiData(allBuildings);
 
+  // ── AUTHENTICATION & SYNC STATE ──
+  const [sessionUser, setSessionUser] = useState(null);
+
   const [sortBy, setSortBy] = useState("height");
   const [decade, setDecade] = useState("All");
   const [use, setUse] = useState("All");
   const [region, setRegion] = useState("All");
-  // Status: additive toggles (completed always shown, toggle U/C and planned)
   const [showUC, setShowUC] = useState(false);
   const [showPlanned, setShowPlanned] = useState(false);
   const [selected, setSelected] = useState(null);
@@ -90,27 +94,100 @@ export default function App() {
   const [compareIds, setCompareIds] = useState([]);
   const [compareMode, setCompareMode] = useState(false);
   const [expandedCity, setExpandedCity] = useState(null);
+  
   const [favs, setFavs] = useState(loadFavs);
   const [showFavsOnly, setShowFavsOnly] = useState(false);
   const [visited, setVisited] = useState(loadVisited);
   const [showVisitedOnly, setShowVisitedOnly] = useState(false);
   const [wishlist, setWishlist] = useState(loadWishlist);
   const [showWishlistOnly, setShowWishlistOnly] = useState(false);
+  
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [hoveredTower, setHoveredTower] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [ready, setReady] = useState(false);
 
   useEffect(() => { setTimeout(() => setReady(true), 60); }, []);
+
+  // ── INIT SUPABASE AUTH ──
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSessionUser(session?.user ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSessionUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── FETCH CLOUD DATA ON LOGIN ──
+  useEffect(() => {
+    if (sessionUser) {
+      const fetchUserData = async () => {
+        const { data, error } = await supabase
+          .from('user_buildings')
+          .select('wikidata_id, status');
+        
+        if (data && !error) {
+          const cloudVisited = data.filter(d => d.status === 'visited').map(d => d.wikidata_id);
+          const cloudWishlist = data.filter(d => d.status === 'wishlist').map(d => d.wikidata_id);
+          
+          if (cloudVisited.length) setVisited(prev => [...new Set([...prev, ...cloudVisited])]);
+          if (cloudWishlist.length) setWishlist(prev => [...new Set([...prev, ...cloudWishlist])]);
+        }
+      };
+      fetchUserData();
+    }
+  }, [sessionUser]);
+
+  // Keep local storage perfectly synced with state
   useEffect(() => { localStorage.setItem("skyline_favs", JSON.stringify(favs)); }, [favs]);
   useEffect(() => { localStorage.setItem("skyline_visited", JSON.stringify(visited)); }, [visited]);
   useEffect(() => { localStorage.setItem("skyline_wishlist", JSON.stringify(wishlist)); }, [wishlist]);
 
+  // ── DATA TOGGLES (Local + Cloud Sync) ──
   const toggleFav = useCallback((id) => setFavs((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]), []);
-  const toggleVisited = useCallback((id) => setVisited((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]), []);
-  const toggleWishlist = useCallback((id) => setWishlist((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]), []);
+  
+const toggleVisited = useCallback((id) => {
+    setVisited((p) => {
+      const isRemoving = p.includes(id);
+      const next = isRemoving ? p.filter((x) => x !== id) : [...p, id];
+      if (sessionUser) {
+        supabase.from('user_buildings').upsert({
+          user_id: sessionUser.id,
+          wikidata_id: id,
+          status: isRemoving ? 'none' : 'visited'
+        }, { onConflict: 'user_id, wikidata_id' })
+        .then(({ error }) => {
+          if (error) {
+            console.error("SUPABASE ERROR:", error.message, error.details, error.hint);
+          } else {
+            console.log("Successfully saved to Supabase!");
+          }
+        });
+      }
+      return next;
+    });
+  }, [sessionUser]);
 
-  // ── Export / Import all user data (visited, wishlist, favs) ──
+  const toggleWishlist = useCallback((id) => {
+    setWishlist((p) => {
+      const isRemoving = p.includes(id);
+      const next = isRemoving ? p.filter((x) => x !== id) : [...p, id];
+      if (sessionUser) {
+        supabase.from('user_buildings').upsert({
+          user_id: sessionUser.id,
+          wikidata_id: id,
+          status: isRemoving ? 'none' : 'wishlist'
+        }, { onConflict: 'user_id, wikidata_id' }).then(); // Fire and forget
+      }
+      return next;
+    });
+  }, [sessionUser]);
+
+  const handleLogout = async () => { await supabase.auth.signOut(); };
+
+  // ── Export / Import all user data ──
   const exportUserData = useCallback(() => {
     const data = { visited, wishlist, favs, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -118,6 +195,32 @@ export default function App() {
     const a = document.createElement("a"); a.href = url; a.download = "skyline-data.json"; a.click();
     URL.revokeObjectURL(url);
   }, [visited, wishlist, favs]);
+
+  const syncLocalToCloud = async () => {
+    if (!sessionUser) return;
+    
+    // Package all local visited and wishlist items into an array
+    const allUpserts = [];
+    visited.forEach(id => allUpserts.push({ user_id: sessionUser.id, wikidata_id: id, status: 'visited' }));
+    wishlist.forEach(id => allUpserts.push({ user_id: sessionUser.id, wikidata_id: id, status: 'wishlist' }));
+    
+    if (allUpserts.length === 0) {
+      alert("No local data to sync!");
+      return;
+    }
+
+    // Push the whole array to Supabase at once
+    const { error } = await supabase
+      .from('user_buildings')
+      .upsert(allUpserts, { onConflict: 'user_id, wikidata_id' });
+
+    if (error) {
+      console.error("Sync error:", error);
+      alert("Error syncing to cloud.");
+    } else {
+      alert("Success! Your old data is now saved to the cloud.");
+    }
+  };
 
   const importUserData = useCallback(() => {
     const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
@@ -127,7 +230,6 @@ export default function App() {
       reader.onload = (ev) => {
         try {
           const data = JSON.parse(ev.target.result);
-          // Support old format (just visited array) and new format
           const vIds = Array.isArray(data.visited) ? data.visited : Array.isArray(data) ? data : [];
           const wIds = Array.isArray(data.wishlist) ? data.wishlist : [];
           const fIds = Array.isArray(data.favs) ? data.favs : [];
@@ -141,7 +243,6 @@ export default function App() {
     input.click();
   }, []);
 
-  // Count unfinished buildings for the toggles
   const unfinishedCounts = useMemo(() => {
     let uc = 0, pl = 0;
     allBuildings.forEach((b) => {
@@ -159,7 +260,6 @@ export default function App() {
       if (decade !== "All" && getDecade(s.year) !== decade) return false;
       if (use !== "All" && !(s.use || "").toLowerCase().includes(use.toLowerCase())) return false;
       if (region !== "All" && getRegion(s.country) !== region) return false;
-      // Status filtering: completed always shown, others are opt-in
       const st = s.status || "completed";
       if (st === "under_construction" && !showUC) return false;
       if (st === "planned" && !showPlanned) return false;
@@ -242,6 +342,22 @@ export default function App() {
   const visitedInSet = useMemo(() => allBuildings.filter(b => visited.includes(b.id)).length, [allBuildings, visited]);
   const wishlistInSet = useMemo(() => allBuildings.filter(b => wishlist.includes(b.id)).length, [allBuildings, wishlist]);
 
+  // ── AUTH PAGE (not logged in) ──
+  if (!sessionUser) {
+    return (
+      <div style={{ minHeight: "100vh", background: t.bg, color: t.text, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
+        <div style={{ background: t.surface, padding: "40px", borderRadius: "16px", border: `1px solid ${t.border}`, boxShadow: `0 8px 32px ${mode === 'dark' ? 'rgba(0,0,0,.5)' : 'rgba(0,0,0,.1)'}`, maxWidth: "400px", width: "90%" }}>
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: 28, fontWeight: 900, color: t.textStrong, margin: 0, letterSpacing: "-.5px" }}>SKYLINE</h1>
+            <span style={{ fontSize: 10, color: t.textMuted, letterSpacing: 3, textTransform: "uppercase" }}>sync login</span>
+          </div>
+          <Auth onLogin={setSessionUser} />
+        </div>
+      </div>
+    );
+  }
+
   // ── DETAIL PAGE (full screen) ──
   if (detailBuilding) {
     return (
@@ -299,7 +415,8 @@ export default function App() {
             <span style={{ fontSize: 9, color: t.textFaint, letterSpacing: 4, textTransform: "uppercase", fontWeight: 300 }}>explorer</span>
             <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
               <button onClick={toggleTheme} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 20, padding: "4px 10px", cursor: "pointer", fontSize: 13, color: t.text, fontFamily: "inherit" }}>{mode === "dark" ? "☀" : "🌙"}</button>
-              <span style={{ fontSize: 8, color: t.textGhost }}>{wd.loading ? "loading wikidata…" : `${allBuildings.length} buildings`}{imgCount > 0 && ` · ${imgCount}📷`}</span>
+              <button onClick={handleLogout} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 20, padding: "4px 10px", cursor: "pointer", fontSize: 12, color: t.text, fontFamily: "inherit" }}>Log out</button>
+              <span style={{ fontSize: 8, color: t.textGhost, marginLeft: 4 }}>{wd.loading ? "loading wikidata…" : `${allBuildings.length} buildings`}{imgCount > 0 && ` · ${imgCount}📷`}</span>
             </div>
           </div>
           <p style={{ fontSize: 11, color: t.textMuted, marginTop: 4, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -641,6 +758,9 @@ export default function App() {
         {(visited.length > 0 || wishlist.length > 0 || favs.length > 0) && (
           <div style={{ marginTop: 20, display: "flex", gap: 8, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 9, color: t.textMuted }}>Your data:</span>
+            {sessionUser && (
+              <button onClick={syncLocalToCloud} style={{ background: t.accentBg, border: `1px solid ${t.accentBorder}`, borderRadius: 6, padding: "4px 10px", color: t.accent, fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>☁️ Push to Cloud</button>
+            )}
             <button onClick={exportUserData} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "4px 10px", color: t.accent, fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>Export JSON</button>
             <button onClick={importUserData} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "4px 10px", color: t.textMuted, fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>Import JSON</button>
           </div>
