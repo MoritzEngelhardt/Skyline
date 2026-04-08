@@ -102,15 +102,22 @@ function buildingsFromRows(seen, startIndex) {
 }
 
 async function runQuery(sparql, signal) {
-  const res = await fetch(`/api/wikidata?format=json&query=${encodeURIComponent(sparql)}`, { 
+  const url = `/api/wikidata?format=json&query=${encodeURIComponent(sparql)}`;
+  
+  const res = await fetch(url, { 
     method: "GET",
-    headers: { 
-      "Accept": "application/sparql-results+json",
-      "Api-User-Agent": "SkylineExplorer/1.0 (https://your-netlify-url.app; your-email@example.com)" 
-    }, 
+    headers: { "Accept": "application/sparql-results+json" }, 
     signal 
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  // This is the missing piece:
+  const contentType = res.headers.get("content-type");
+if (!res.ok || !contentType || !contentType.toLowerCase().includes("json")) {
+      const text = await res.text();
+    console.error("Proxy Error Details:", text.slice(0, 200)); // See the actual error HTML
+    throw new Error(`Proxy failed: ${res.status}. Expected JSON but got ${contentType}`);
+  }
+
   const data = await res.json();
   return data?.results?.bindings || [];
 }
