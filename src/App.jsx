@@ -797,6 +797,8 @@ const toggleVisited = useCallback((id) => {
           <span style={{ color: t.textGhost, fontSize: 10 }}>·</span>
           <button onClick={() => setLegalPage("datenschutz")} style={{ background: "none", border: "none", color: t.textFaint, cursor: "pointer", fontSize: 10, fontFamily: "inherit", textDecoration: "underline", textUnderlineOffset: 2 }}>Datenschutz</button>
           <span style={{ color: t.textGhost, fontSize: 10 }}>·</span>
+          <a href="https://ko-fi.com/EngelHeartWare" target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: t.accent, textDecoration: "none", fontFamily: "inherit" }}>☕ Support this project</a>
+          <span style={{ color: t.textGhost, fontSize: 10 }}>·</span>
           <span style={{ fontSize: 10, color: t.textGhost }}>© {new Date().getFullYear()} EngelHeartWare</span>
         </footer>
       </div>

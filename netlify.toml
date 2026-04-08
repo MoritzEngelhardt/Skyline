@@ -1,6 +1,6 @@
 [[redirects]]
-  from = "/api/wikidata/*"
-  to = "https://query.wikidata.org/sparql/:splat"
+  from = "/api/wikidata"
+  to = "https://query.wikidata.org/sparql"
   status = 200
   force = true
 
