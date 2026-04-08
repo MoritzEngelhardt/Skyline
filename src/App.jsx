@@ -11,6 +11,8 @@ import CompareView from "./components/CompareView";
 import DetailPage from "./components/DetailPage";
 
 function loadFavs() { try { return JSON.parse(localStorage.getItem("skyline_favs") || "[]"); } catch { return []; } }
+function loadVisited() { try { return JSON.parse(localStorage.getItem("skyline_visited") || "[]"); } catch { return []; } }
+function loadWishlist() { try { return JSON.parse(localStorage.getItem("skyline_wishlist") || "[]"); } catch { return []; } }
 
 // ── Country flag emoji helper ──
 const COUNTRY_FLAGS = {
@@ -53,8 +55,9 @@ function AnimNum({ value, duration = 500 }) {
 function mergeCustom(wdBuildings) {
   const base = wdBuildings.length > 0 ? wdBuildings : FALLBACK_BUILDINGS;
   const ids = new Set(base.map((b) => b.id));
+  const names = new Set(base.map((b) => b.name.toLowerCase().trim()));
   const extras = CUSTOM_BUILDINGS
-    .filter((c) => !ids.has(c.id))
+    .filter((c) => !ids.has(c.id) && !names.has(c.name.toLowerCase().trim()))
     .map((c, i) => ({ ...c, color: c.color || assignColor(base.length + i), status: c.status || "completed", architect: c.architect || c.arch || null }));
   const overrideMap = {};
   CUSTOM_BUILDINGS.forEach((c) => { if (ids.has(c.id)) overrideMap[c.id] = c; });
@@ -69,7 +72,7 @@ export default function App() {
   const { t, mode, toggle: toggleTheme } = useTheme();
   const wd = useWikidata();
   const allBuildings = useMemo(() => mergeCustom(wd.buildings), [wd.buildings]);
-  const maxH = useMemo(() => Math.max(...allBuildings.map((b) => b.height), 830), [allBuildings]);
+  const maxH = useMemo(() => Math.max(...allBuildings.map((b) => b.height), 1000), [allBuildings]);
   const tallestBadges = useMemo(() => computeTallestBadges(allBuildings), [allBuildings]);
   const { images, extracts } = useWikiData(allBuildings);
 
@@ -89,6 +92,10 @@ export default function App() {
   const [expandedCity, setExpandedCity] = useState(null);
   const [favs, setFavs] = useState(loadFavs);
   const [showFavsOnly, setShowFavsOnly] = useState(false);
+  const [visited, setVisited] = useState(loadVisited);
+  const [showVisitedOnly, setShowVisitedOnly] = useState(false);
+  const [wishlist, setWishlist] = useState(loadWishlist);
+  const [showWishlistOnly, setShowWishlistOnly] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [hoveredTower, setHoveredTower] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
@@ -96,8 +103,43 @@ export default function App() {
 
   useEffect(() => { setTimeout(() => setReady(true), 60); }, []);
   useEffect(() => { localStorage.setItem("skyline_favs", JSON.stringify(favs)); }, [favs]);
+  useEffect(() => { localStorage.setItem("skyline_visited", JSON.stringify(visited)); }, [visited]);
+  useEffect(() => { localStorage.setItem("skyline_wishlist", JSON.stringify(wishlist)); }, [wishlist]);
 
   const toggleFav = useCallback((id) => setFavs((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]), []);
+  const toggleVisited = useCallback((id) => setVisited((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]), []);
+  const toggleWishlist = useCallback((id) => setWishlist((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]), []);
+
+  // ── Export / Import all user data (visited, wishlist, favs) ──
+  const exportUserData = useCallback(() => {
+    const data = { visited, wishlist, favs, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "skyline-data.json"; a.click();
+    URL.revokeObjectURL(url);
+  }, [visited, wishlist, favs]);
+
+  const importUserData = useCallback(() => {
+    const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+    input.onchange = (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          // Support old format (just visited array) and new format
+          const vIds = Array.isArray(data.visited) ? data.visited : Array.isArray(data) ? data : [];
+          const wIds = Array.isArray(data.wishlist) ? data.wishlist : [];
+          const fIds = Array.isArray(data.favs) ? data.favs : [];
+          if (vIds.length > 0) setVisited((prev) => [...new Set([...prev, ...vIds])]);
+          if (wIds.length > 0) setWishlist((prev) => [...new Set([...prev, ...wIds])]);
+          if (fIds.length > 0) setFavs((prev) => [...new Set([...prev, ...fIds])]);
+        } catch { /* ignore bad files */ }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }, []);
 
   // Count unfinished buildings for the toggles
   const unfinishedCounts = useMemo(() => {
@@ -112,6 +154,8 @@ export default function App() {
   const filtered = useMemo(() => {
     let list = allBuildings.filter((s) => {
       if (showFavsOnly && !favs.includes(s.id)) return false;
+      if (showVisitedOnly && !visited.includes(s.id)) return false;
+      if (showWishlistOnly && !wishlist.includes(s.id)) return false;
       if (decade !== "All" && getDecade(s.year) !== decade) return false;
       if (use !== "All" && !(s.use || "").toLowerCase().includes(use.toLowerCase())) return false;
       if (region !== "All" && getRegion(s.country) !== region) return false;
@@ -135,7 +179,7 @@ export default function App() {
       return (a.name || "").localeCompare(b.name || "");
     });
     return list;
-  }, [allBuildings, sortBy, decade, use, region, showUC, showPlanned, search, showFavsOnly, favs]);
+  }, [allBuildings, sortBy, decade, use, region, showUC, showPlanned, search, showFavsOnly, favs, showVisitedOnly, visited, showWishlistOnly, wishlist]);
 
   const detail = selected && !compareMode ? allBuildings.find((s) => s.id === selected) : null;
   const detailBuilding = detailId ? allBuildings.find((s) => s.id === detailId) : null;
@@ -166,12 +210,20 @@ export default function App() {
       if (document.activeElement?.tagName === "INPUT") return;
       toggleFav(selected);
     }
+    if (e.key === "v" && selected && !detailId && !e.metaKey && !e.ctrlKey) {
+      if (document.activeElement?.tagName === "INPUT") return;
+      toggleVisited(selected);
+    }
+    if (e.key === "w" && selected && !detailId && !e.metaKey && !e.ctrlKey) {
+      if (document.activeElement?.tagName === "INPUT") return;
+      toggleWishlist(selected);
+    }
     if (e.key === "/" && !detailId) {
       if (document.activeElement?.tagName === "INPUT") return;
       e.preventDefault();
       document.querySelector(".si")?.focus();
     }
-  }, [selected, detailId, filtered, toggleFav]);
+  }, [selected, detailId, filtered, toggleFav, toggleVisited, toggleWishlist]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleKey);
@@ -186,7 +238,9 @@ export default function App() {
   }), [filtered]);
 
   const imgCount = Object.keys(images).length;
-  const activeFilterCount = (decade !== "All" ? 1 : 0) + (use !== "All" ? 1 : 0) + (region !== "All" ? 1 : 0) + (showUC ? 1 : 0) + (showPlanned ? 1 : 0) + (showFavsOnly ? 1 : 0);
+  const activeFilterCount = (decade !== "All" ? 1 : 0) + (use !== "All" ? 1 : 0) + (region !== "All" ? 1 : 0) + (showUC ? 1 : 0) + (showPlanned ? 1 : 0) + (showFavsOnly ? 1 : 0) + (showVisitedOnly ? 1 : 0) + (showWishlistOnly ? 1 : 0);
+  const visitedInSet = useMemo(() => allBuildings.filter(b => visited.includes(b.id)).length, [allBuildings, visited]);
+  const wishlistInSet = useMemo(() => allBuildings.filter(b => wishlist.includes(b.id)).length, [allBuildings, wishlist]);
 
   // ── DETAIL PAGE (full screen) ──
   if (detailBuilding) {
@@ -198,7 +252,9 @@ export default function App() {
           <DetailPage building={detailBuilding} allBuildings={allBuildings} image={images[detailBuilding.id]}
             extract={extracts[detailBuilding.id]} isFav={favs.includes(detailBuilding.id)}
             onToggleFav={() => toggleFav(detailBuilding.id)} onClose={() => setDetailId(null)}
-            isTallestRecord={tallestBadges.has(detailBuilding.id)} maxH={maxH} />
+            isTallestRecord={tallestBadges.has(detailBuilding.id)} maxH={maxH}
+            isVisited={visited.includes(detailBuilding.id)} onToggleVisited={() => toggleVisited(detailBuilding.id)}
+            isWishlisted={wishlist.includes(detailBuilding.id)} onToggleWishlist={() => toggleWishlist(detailBuilding.id)} />
         </div>
       </div>
     );
@@ -229,7 +285,7 @@ export default function App() {
         .si::placeholder{color:${t.textFaint}}.si:focus{border-color:${t.accentBorder};background:${t.surfaceHover}}
         .vb{padding:5px 9px;border-radius:6px;border:1px solid ${t.pillBorder};background:transparent;color:${t.textMuted};font-size:10px;cursor:pointer;font-family:inherit;transition:all .15s}
         .vb:hover{background:${t.surfaceHover};color:${t.text}}.vb.a{background:${t.accentBg};border-color:${t.accentBorder};color:${t.accent}}
-        .lr{display:grid;grid-template-columns:36px 2fr 1.2fr 56px 30px 30px 22px;gap:2px;padding:6px 8px;border-bottom:1px solid ${t.border};align-items:center;cursor:pointer;transition:background .1s;font-size:11px}.lr:hover{background:${t.surfaceHover}}
+        .lr{display:grid;grid-template-columns:36px 2fr 1.2fr 56px 30px 30px 22px 22px;gap:2px;padding:6px 8px;border-bottom:1px solid ${t.border};align-items:center;cursor:pointer;transition:background .1s;font-size:11px}.lr:hover{background:${t.surfaceHover}}
         .cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:14px}
         .float-panel{position:fixed;top:10px;right:10px;width:320px;max-height:calc(100vh - 20px);overflow-y:auto;z-index:50;border-radius:14px;animation:slideIn .25s ease}
         @media(max-width:700px){.float-panel{position:fixed;bottom:0;right:0;left:0;top:auto;width:100%;max-height:55vh;border-radius:14px 14px 0 0}}
@@ -252,6 +308,8 @@ export default function App() {
             <span><span style={{ fontWeight: 600, color: t.text, fontSize: 13 }}><AnimNum value={stats.countries} /></span> countries</span>
             <span>avg <span style={{ fontWeight: 600, color: t.accent, fontSize: 13 }}><AnimNum value={stats.avg} /></span>m</span>
             {favs.length > 0 && <span style={{ color: t.fav }}>{favs.length} ♥</span>}
+            {visited.length > 0 && <span style={{ color: t.visited }}>{visitedInSet} ✓ visited</span>}
+            {wishlist.length > 0 && <span style={{ color: t.wishlist }}>{wishlistInSet} ☆ wishlist</span>}
           </p>
         </div>
 
@@ -276,6 +334,16 @@ export default function App() {
             <button className={`p ${showFavsOnly ? "a" : ""}`}
               style={{ borderColor: showFavsOnly ? `${t.fav}55` : undefined, color: showFavsOnly ? t.fav : undefined, background: showFavsOnly ? t.favBg : undefined }}
               onClick={() => setShowFavsOnly(!showFavsOnly)}>♥ {showFavsOnly ? `Fav (${favs.length})` : favs.length || "Favs"}</button>
+            <button className={`p ${showVisitedOnly ? "a" : ""}`}
+              style={{ borderColor: showVisitedOnly ? t.visitedBorder : undefined, color: showVisitedOnly ? t.visited : undefined, background: showVisitedOnly ? t.visitedBg : undefined }}
+              onClick={() => setShowVisitedOnly(!showVisitedOnly)}>
+              ✓ {visited.length === 0 ? "Visited" : visitedInSet}
+            </button>
+            <button className={`p ${showWishlistOnly ? "a" : ""}`}
+              style={{ borderColor: showWishlistOnly ? t.wishlistBorder : undefined, color: showWishlistOnly ? t.wishlist : undefined, background: showWishlistOnly ? t.wishlistBg : undefined }}
+              onClick={() => setShowWishlistOnly(!showWishlistOnly)}>
+              ☆ {wishlist.length === 0 ? "Wishlist" : wishlistInSet}
+            </button>
             <button className={`p ${compareMode ? "a" : ""}`}
               style={{ borderColor: compareMode ? `${t.compare}55` : undefined, color: compareMode ? t.compare : undefined, background: compareMode ? t.compareBg : undefined }}
               onClick={() => { setCompareMode(!compareMode); if (compareMode) setCompareIds([]); }}>
@@ -312,7 +380,7 @@ export default function App() {
                   onClick={() => setShowPlanned(!showPlanned)}>📐 Planned {unfinishedCounts.pl > 0 && `(${unfinishedCounts.pl})`}</button>
               </div>
               {activeFilterCount > 0 && (
-                <button onClick={() => { setDecade("All"); setUse("All"); setRegion("All"); setShowUC(false); setShowPlanned(false); setShowFavsOnly(false); }}
+                <button onClick={() => { setDecade("All"); setUse("All"); setRegion("All"); setShowUC(false); setShowPlanned(false); setShowFavsOnly(false); setShowVisitedOnly(false); setShowWishlistOnly(false); }}
                   style={{ alignSelf: "flex-start", background: "none", border: "none", color: t.accent, fontSize: 10, cursor: "pointer", fontFamily: "inherit", padding: "2px 0" }}>
                   Clear all filters
                 </button>
@@ -323,7 +391,7 @@ export default function App() {
 
         {/* Keyboard hint */}
         <div style={{ fontSize: 8.5, color: t.textGhost, marginBottom: 14 }}>
-          ← → navigate · Enter open · Esc back · F favorite · / search
+          ← → navigate · Enter open · Esc back · F favorite · V visited · / search
         </div>
 
         {/* Compare */}
@@ -357,6 +425,8 @@ export default function App() {
                   <p style={{ fontSize: 10.5, color: t.textMuted, marginTop: 2 }}>{locWithFlag(detail)}</p>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => toggleWishlist(detail.id)} title={wishlist.includes(detail.id) ? "Remove from wishlist" : "Add to wishlist"} style={{ background: wishlist.includes(detail.id) ? t.wishlistBg : "none", border: wishlist.includes(detail.id) ? `1px solid ${t.wishlistBorder}` : "1px solid transparent", borderRadius: 6, color: wishlist.includes(detail.id) ? t.wishlist : t.textFaint, cursor: "pointer", fontSize: 12, padding: "2px 5px" }}>☆</button>
+                  <button onClick={() => toggleVisited(detail.id)} title={visited.includes(detail.id) ? "Mark as not visited" : "Mark as visited"} style={{ background: visited.includes(detail.id) ? t.visitedBg : "none", border: visited.includes(detail.id) ? `1px solid ${t.visitedBorder}` : "1px solid transparent", borderRadius: 6, color: visited.includes(detail.id) ? t.visited : t.textFaint, cursor: "pointer", fontSize: 12, padding: "2px 5px" }}>✓</button>
                   <button onClick={() => toggleFav(detail.id)} style={{ background: "none", border: "none", color: favs.includes(detail.id) ? t.fav : t.textFaint, cursor: "pointer", fontSize: 15 }}>{favs.includes(detail.id) ? "♥" : "♡"}</button>
                   <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", color: t.textFaint, cursor: "pointer", fontSize: 13 }}>✕</button>
                 </div>
@@ -430,6 +500,7 @@ export default function App() {
                       {showRank && <div style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", fontSize: 7, fontWeight: 700, color: rank === 1 ? "#ffd700" : rank === 2 ? "#c0c0c0" : "#cd7f32", background: mode === "dark" ? "rgba(0,0,0,.6)" : "rgba(255,255,255,.8)", borderRadius: 6, padding: "1px 4px", zIndex: 3, lineHeight: 1.3, border: `1px solid ${rank === 1 ? "rgba(255,215,0,.3)" : rank === 2 ? "rgba(192,192,192,.3)" : "rgba(205,127,50,.3)"}` }}>#{rank}</div>}
                       {tallestBadges.has(s.id) && !showRank && <div style={{ fontSize: 5, position: "absolute", top: -2, right: -2, zIndex: 1 }}>🏆</div>}
                       {favs.includes(s.id) && <div style={{ fontSize: 5, color: t.fav, position: "absolute", top: -2, left: -1 }}>♥</div>}
+                      {visited.includes(s.id) && <div style={{ fontSize: 5, color: t.visited, position: "absolute", top: favs.includes(s.id) ? 5 : -2, left: -1, fontWeight: 700 }}>✓</div>}
                       {/* Building glow */}
                       <div style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: 20, height: 8, background: s.color, opacity: isHovered ? 0.15 : 0.05, filter: "blur(6px)", borderRadius: "50%", transition: "opacity .2s" }} />
                       <Tower height={s.height} maxH={maxH} color={s.color} sel={selected === s.id || compareIds.includes(s.id)} floors={s.floors} />
@@ -447,7 +518,7 @@ export default function App() {
               if (!hb) return null;
               return (
                 <div style={{ position: "fixed", left: hoverPos.x, top: hoverPos.y, transform: "translate(-50%, -100%)", background: t.tooltipBg, border: `1px solid ${t.border}`, borderRadius: 8, padding: "6px 10px", boxShadow: `0 4px 16px ${mode === "dark" ? "rgba(0,0,0,.5)" : "rgba(0,0,0,.1)"}`, zIndex: 100, pointerEvents: "none", animation: "tipIn .12s ease", maxWidth: 200, backdropFilter: "blur(8px)" }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: t.textStrong, lineHeight: 1.3 }}>{hb.name}</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: t.textStrong, lineHeight: 1.3, display: "flex", gap: 4, alignItems: "center" }}>{hb.name} {visited.includes(hb.id) && <span style={{ fontSize: 8, color: t.visited, fontWeight: 700 }}>✓</span>}</div>
                   <div style={{ fontSize: 9, color: t.textMuted, marginTop: 1 }}>{locWithFlag(hb)}</div>
                   <div style={{ display: "flex", gap: 8, marginTop: 3 }}>
                     <span style={{ fontSize: 10, color: t.accent, fontWeight: 600 }}>{hb.height}m</span>
@@ -488,6 +559,7 @@ export default function App() {
                     {images[s.id] ? <img src={images[s.id]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       : <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "center", height: "100%", paddingBottom: 8 }}><Tower height={s.height} maxH={maxH} color={s.color} floors={s.floors} scale={.4} /></div>}
                     {favs.includes(s.id) && <div style={{ position: "absolute", top: 6, right: 7, fontSize: 11, color: t.fav, textShadow: "0 1px 3px rgba(0,0,0,.4)" }}>♥</div>}
+                    {visited.includes(s.id) && <div style={{ position: "absolute", top: 6, right: favs.includes(s.id) ? 22 : 7, fontSize: 9, fontWeight: 700, color: t.visited, background: "rgba(0,0,0,.45)", borderRadius: 5, padding: "1px 4px", backdropFilter: "blur(4px)" }}>✓</div>}
                     {showRank && <div style={{ position: "absolute", top: 6, left: 7, fontSize: 9, fontWeight: 700, color: rank === 1 ? "#ffd700" : rank === 2 ? "#c0c0c0" : "#cd7f32", background: "rgba(0,0,0,.55)", borderRadius: 6, padding: "1px 5px", backdropFilter: "blur(4px)" }}>#{rank}</div>}
                     {!showRank && tallestBadges.has(s.id) && <div style={{ position: "absolute", top: 6, left: 7, fontSize: 10 }}>🏆</div>}
                     {s.status !== "completed" && <div style={{ position: "absolute", top: 6, right: favs.includes(s.id) ? 24 : 7, fontSize: 8, color: "#ffcc88", background: "rgba(0,0,0,.5)", padding: "1px 5px", borderRadius: 4 }}>{s.status === "under_construction" ? "⚒" : "📐"}</div>}
@@ -519,7 +591,7 @@ export default function App() {
         {view === "list" && (
           <div style={{ animation: "fi .18s", borderRadius: 9, overflow: "hidden", border: `1px solid ${t.border}` }}>
             <div className="lr" style={{ fontSize: 7.5, color: t.textGhost, textTransform: "uppercase", letterSpacing: 1.2, cursor: "default" }}>
-              <span /><span>Building</span><span>Location</span><span>Height</span><span>Fl</span><span>Year</span><span />
+              <span /><span>Building</span><span>Location</span><span>Height</span><span>Fl</span><span>Year</span><span /><span />
             </div>
             {/* Skeleton rows */}
             {wd.loading && !filtered.length && Array.from({ length: 10 }).map((_, i) => (
@@ -530,6 +602,7 @@ export default function App() {
                 <div style={{ height: 8, width: 30, borderRadius: 4, background: t.surface }} />
                 <div style={{ height: 8, width: 16, borderRadius: 4, background: t.surface }} />
                 <div style={{ height: 8, width: 24, borderRadius: 4, background: t.surface }} />
+                <span />
                 <span />
               </div>
             ))}
@@ -556,15 +629,31 @@ export default function App() {
                 <div style={{ color: t.textMuted, fontSize: 10 }}>{s.floors || "—"}</div>
                 <div style={{ color: t.textMuted, fontSize: 10 }}>{s.year || "—"}</div>
                 <button onClick={(e) => { e.stopPropagation(); toggleFav(s.id); }} style={{ background: "none", border: "none", color: favs.includes(s.id) ? t.fav : t.textGhost, cursor: "pointer", fontSize: 11, padding: 0 }}>{favs.includes(s.id) ? "♥" : "♡"}</button>
+                <button onClick={(e) => { e.stopPropagation(); toggleVisited(s.id); }} title={visited.includes(s.id) ? "Mark as not visited" : "Mark as visited"} style={{ background: "none", border: "none", color: visited.includes(s.id) ? t.visited : t.textGhost, cursor: "pointer", fontSize: 11, padding: 0, fontWeight: visited.includes(s.id) ? 700 : 400 }}>✓</button>
+                <button onClick={(e) => { e.stopPropagation(); toggleWishlist(s.id); }} title={wishlist.includes(s.id) ? "Remove from wishlist" : "Add to wishlist"} style={{ background: "none", border: "none", color: wishlist.includes(s.id) ? t.wishlist : t.textGhost, cursor: "pointer", fontSize: 11, padding: 0 }}>{wishlist.includes(s.id) ? "★" : "☆"}</button>
               </div>
               );
             })}
           </div>
         )}
 
-        <div style={{ marginTop: 28, fontSize: 8.5, color: t.textGhost, textAlign: "center", lineHeight: 1.7 }}>
+        {/* Export/Import user data */}
+        {(visited.length > 0 || wishlist.length > 0 || favs.length > 0) && (
+          <div style={{ marginTop: 20, display: "flex", gap: 8, justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 9, color: t.textMuted }}>Your data:</span>
+            <button onClick={exportUserData} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "4px 10px", color: t.accent, fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>Export JSON</button>
+            <button onClick={importUserData} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "4px 10px", color: t.textMuted, fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>Import JSON</button>
+          </div>
+        )}
+        {visited.length === 0 && wishlist.length === 0 && favs.length === 0 && (
+          <div style={{ marginTop: 20, display: "flex", gap: 8, justifyContent: "center", alignItems: "center" }}>
+            <button onClick={importUserData} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "4px 10px", color: t.textMuted, fontSize: 9, cursor: "pointer", fontFamily: "inherit" }}>Import data</button>
+          </div>
+        )}
+
+        <div style={{ marginTop: 12, fontSize: 8.5, color: t.textGhost, textAlign: "center", lineHeight: 1.7 }}>
           {wd.error && <span>Wikidata unavailable — showing fallback · </span>}
-          Data: Wikidata ({allBuildings.length}) + custom · Images: Wikipedia · 🏆 = tallest when completed · v0.7
+          Data: Wikidata ({allBuildings.length}) + custom · Images: Wikipedia · 🏆 = tallest when completed · v0.8
         </div>
       </div>
     </div>

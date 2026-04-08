@@ -25,7 +25,7 @@ export const FALLBACK_BUILDINGS = [
 export const MAX_H = 830;
 export const DECADES = ["All", "Pre-2000", "2000s", "2010s", "2020s"];
 export const USES = ["All", "Office", "Mixed", "Residential"];
-export const REGIONS = ["All", "Asia", "Middle East", "North America", "Europe"];
+export const REGIONS = ["All", "Asia", "Middle East", "North America", "Europe", "Other"];
 export const STATUSES = ["completed", "construction", "planned"];
 
 export function getRegion(country) {

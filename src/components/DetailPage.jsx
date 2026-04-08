@@ -1,7 +1,7 @@
 import { useTheme } from "../hooks/useTheme";
 import { getStatusLabel } from "../data/buildings";
 
-export default function DetailPage({ building: b, allBuildings, image, extract, isFav, onToggleFav, onClose, isTallestRecord, maxH }) {
+export default function DetailPage({ building: b, allBuildings, image, extract, isFav, onToggleFav, onClose, isTallestRecord, maxH, isVisited, onToggleVisited, isWishlisted, onToggleWishlist }) {
   const { t } = useTheme();
   const rank = [...allBuildings].filter(x => x.status === "completed").sort((a, c) => c.height - a.height).findIndex((s) => s.id === b.id) + 1;
   const shortExtract = extract ? extract.split(". ").slice(0, 4).join(". ").replace(/\n/g, " ") + "." : null;
@@ -31,7 +31,11 @@ export default function DetailPage({ building: b, allBuildings, image, extract, 
 
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", justifyContent: "space-between", padding: "10px 14px" }}>
           <button onClick={onClose} style={{ background: t.mode === "dark" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.7)", backdropFilter: "blur(8px)", border: "none", borderRadius: 8, padding: "6px 12px", color: t.text, cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>← Back <span style={{ fontSize: 9, opacity: .5 }}>(Esc)</span></button>
-          <button onClick={onToggleFav} style={{ background: t.mode === "dark" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.7)", backdropFilter: "blur(8px)", border: "none", borderRadius: 8, padding: "6px 12px", color: isFav ? t.fav : t.text, cursor: "pointer", fontSize: 16 }}>{isFav ? "♥" : "♡"}</button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={onToggleWishlist} style={{ background: isWishlisted ? (t.mode === "dark" ? "rgba(180,140,255,.15)" : "rgba(144,80,208,.12)") : (t.mode === "dark" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.7)"), backdropFilter: "blur(8px)", border: isWishlisted ? `1px solid ${t.wishlistBorder}` : "none", borderRadius: 8, padding: "6px 12px", color: isWishlisted ? t.wishlist : t.text, cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: isWishlisted ? 600 : 400 }}>{isWishlisted ? "★ Wishlisted" : "☆ Wishlist"}</button>
+            <button onClick={onToggleVisited} style={{ background: isVisited ? (t.mode === "dark" ? "rgba(102,217,160,.15)" : "rgba(42,157,92,.12)") : (t.mode === "dark" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.7)"), backdropFilter: "blur(8px)", border: isVisited ? `1px solid ${t.visitedBorder}` : "none", borderRadius: 8, padding: "6px 12px", color: isVisited ? t.visited : t.text, cursor: "pointer", fontSize: 12, fontFamily: "inherit", fontWeight: isVisited ? 600 : 400 }}>✓ {isVisited ? "Visited" : "Visit"}</button>
+            <button onClick={onToggleFav} style={{ background: t.mode === "dark" ? "rgba(0,0,0,.45)" : "rgba(255,255,255,.7)", backdropFilter: "blur(8px)", border: "none", borderRadius: 8, padding: "6px 12px", color: isFav ? t.fav : t.text, cursor: "pointer", fontSize: 16 }}>{isFav ? "♥" : "♡"}</button>
+          </div>
         </div>
 
         <div style={{ position: "absolute", bottom: 14, left: 16, right: 16 }}>
@@ -40,6 +44,8 @@ export default function DetailPage({ building: b, allBuildings, image, extract, 
             {isTallestRecord && <span style={{ background: "rgba(255,200,50,.12)", border: "1px solid rgba(255,200,50,.25)", borderRadius: 6, padding: "3px 8px", fontSize: 10, color: "#ffd044", fontWeight: 600 }}>🏆 World record holder</span>}
             {b.status === "under_construction" && <span style={{ background: "rgba(255,180,100,.12)", border: "1px solid rgba(255,180,100,.25)", borderRadius: 6, padding: "3px 8px", fontSize: 10, color: "#ffcc88" }}>⚒ Under construction</span>}
             {b.status === "planned" && <span style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: t.textMuted }}>📐 Planned</span>}
+            {isVisited && <span style={{ background: "rgba(102,217,160,.12)", border: `1px solid ${t.visitedBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: t.visited, fontWeight: 600 }}>✓ Visited</span>}
+            {isWishlisted && <span style={{ background: "rgba(180,140,255,.12)", border: `1px solid ${t.wishlistBorder}`, borderRadius: 6, padding: "3px 8px", fontSize: 10, color: t.wishlist, fontWeight: 600 }}>★ Wishlisted</span>}
           </div>
           <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: 26, fontWeight: 900, color: t.mode === "dark" ? "#fff" : t.textStrong, textShadow: t.mode === "dark" ? "0 2px 12px rgba(0,0,0,.5)" : "none", lineHeight: 1.15, margin: 0 }}>{b.name}</h1>
           <p style={{ fontSize: 13, color: t.textMuted, marginTop: 3 }}>{location}</p>
