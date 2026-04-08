@@ -597,7 +597,8 @@ const toggleVisited = useCallback((id) => {
               : "linear-gradient(90deg, transparent, rgba(42,106,181,.03) 20%, rgba(42,106,181,.03) 80%, transparent)", filter: "blur(4px)", pointerEvents: "none", zIndex: 1 }} />
 
             {/* Skeleton loading */}
-            {wd.loading && !filtered.length && (
+            {/* Skeleton loading */}
+            {wd.loading && (
               <div style={{ display: "flex", alignItems: "flex-end", gap: 3, paddingBottom: 24, minHeight: 280, justifyContent: "center" }}>
                 {Array.from({ length: 20 }).map((_, i) => {
                   const h = 60 + Math.random() * 160;
@@ -605,7 +606,6 @@ const toggleVisited = useCallback((id) => {
                 })}
               </div>
             )}
-
             {/* Towers */}
             {(!wd.loading || filtered.length > 0) && (
               <div style={{ display: "flex", alignItems: "flex-end", gap: 2, overflowX: "auto", paddingBottom: 24, minHeight: 280, position: "relative", zIndex: 2 }}>

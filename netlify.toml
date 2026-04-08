@@ -4,7 +4,6 @@
   status = 200
   force = true
 
-# This second rule is required for React Router to work properly on Netlify!
 [[redirects]]
   from = "/*"
   to = "/index.html"

@@ -102,16 +102,15 @@ function buildingsFromRows(seen, startIndex) {
 }
 
 async function runQuery(sparql, signal) {
-  // Look how clean this is! We just ask our own /api route.
-  // In dev, Vite handles the proxy. In prod, Netlify handles it.
   const res = await fetch(`/api/wikidata?format=json&query=${encodeURIComponent(sparql)}`, { 
     method: "GET",
-    headers: { "Accept": "application/sparql-results+json" }, 
+    headers: { 
+      "Accept": "application/sparql-results+json",
+      "Api-User-Agent": "SkylineExplorer/1.0 (https://your-netlify-url.app; your-email@example.com)" 
+    }, 
     signal 
   });
-  
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  
   const data = await res.json();
   return data?.results?.bindings || [];
 }
