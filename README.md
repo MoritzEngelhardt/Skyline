@@ -27,14 +27,19 @@ This project combines a modern React interface with a robust backend for managin
 * **External APIs:** Wikipedia / Wikimedia Commons API for fetching content and images.
 * **Static Pages:** Vanilla HTML, CSS, and standard JavaScript for the landing experience.
 
-🤝 Contributing
-Contributions, issues, and feature requests are welcome!
 
-📄 License
+## 🤝 Support the Project
+This app is developed as an indie project. If you find the code helpful or enjoy using the app, consider supporting its continued development! Contributions, issues, and feature requests are welcome!
+
+
+☕️ **[Buy me a coffee!](https://ko-fi.com/engelheartware)**
+
+## 📄 License
+
 **All Rights Reserved**
 
-The source code in this repository is made available for educational and portfolio purposes only.
+The source code in this repository is made available for educational and portfolio purposes only. 
 
-Copyright © 2026 Moritz Engelhardt (EngelHeartWare). All rights reserved.
+Copyright © 2026 Moritz Engelhardt. All rights reserved. 
 
 You are welcome to read the code to learn from it, but you may not use, copy, modify, merge, publish, distribute, sublicense, or sell copies of this software without explicit written permission.
