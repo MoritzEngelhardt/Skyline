@@ -1,18 +1,18 @@
 # Skyline Explorer 🏙️
 
-> A beautiful, searchable interface for discovering and curating Wikipedia content and imagery.
+> A beautiful, searchable interface for discovering and curating skyscrapers around the world.
 
 ## 📖 About the Project
 
-Skyline Explorer takes the vast wealth of data and media available on Wikipedia and WikiImages and transforms it into a highly visual, user-friendly experience. It allows users to effortlessly search and filter through entries, while also providing a personalized dashboard to track their discoveries. 
+Skyline Explorer takes the vast wealth of data and media available on Wikipedia and WikiImages and transforms it into a highly visual, user-friendly experience. It allows users to effortlessly search and filter through skyscrapers, while also providing a personalized dashboard to track their discoveries. 
 
-Whether you are building a wishlist of places to go, tagging interesting topics, or logging entries you've already visited, this app makes exploring Wikipedia data interactive and personal.
+Whether you are building a wishlist of skyscrapers to visit, tagging interesting buildings, or keeping track of ones you've already visited, this app makes exploring skyscrapers interactive and personal.
 
 ### ✨ Key Features
 * **Rich Data Integration:** Aggregates and beautifully presents text and imagery directly from Wikipedia/WikiImages.
-* **Advanced Search & Filtering:** Quickly find exactly what you're looking for with robust search tools and custom filters.
 * **Personalized Collections:** Logged-in users can save, tag, and organize their favorite entries.
-* **Status Tracking:** Keep track of your real-world or digital explorations by marking entries as "wishlisted" or "visited."
+* **Status Tracking:** Keep track of your real-world or digital explorations by marking buildings as "wishlisted" or "visited."
+* **Advanced Search & Filtering:** Quickly find exactly what you're looking for with robust search tools and custom filters.
 * **Real-time Syncing:** User data and preferences are securely saved and synced instantly.
 
 ---
@@ -26,62 +26,6 @@ This project combines a modern React interface with a robust backend for managin
 * **Backend & Database:** [Supabase](https://supabase.com/) - handling secure user authentication and PostgreSQL data storage for tags/wishlists.
 * **External APIs:** Wikipedia / Wikimedia Commons API for fetching content and images.
 * **Static Pages:** Vanilla HTML, CSS, and standard JavaScript for the landing experience.
-
----
-
-## 🚀 Getting Started
-
-Follow these instructions to get a local copy of the project up and running.
-
-### Prerequisites
-
-Make sure you have Node.js and npm (Node Package Manager) installed.
-* [Download Node.js](https://nodejs.org/)
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/](https://github.com/)[your-username]/[your-repo-name].git
-
-2. **Navigate to the project directory:**
-
-Bash
-cd [your-repo-name]
-
-3. **Install dependencies:**
-
-Bash
-npm install
-
-**Environment Variables**
-
-To run this project, you will need to connect it to your Supabase project to handle the user accounts and saved/visited tags.
-
-Create a .env.local file in the root directory.
-
-Add your Supabase credentials (found in your Supabase project settings):
-
-Code-Snippet
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-(Note: Never commit your .env files to GitHub!)
-
-**💻 Available Scripts**
-In the project directory, you can run:
-
-npm run dev
-
-Runs the app in the development mode.
-Open http://localhost:5173 to view it in the browser. The page will reload if you make edits.
-
-npm run build
-
-Builds the app for production to the dist folder. It correctly bundles React in production mode and optimizes the build for the best performance.
-
-npm run preview
-
-Boots up a local static web server that serves the files from the dist folder, allowing you to check the production build locally.
 
 🤝 Contributing
 Contributions, issues, and feature requests are welcome!
