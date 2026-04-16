@@ -1,3 +1,46 @@
+# macOS
+.DS_Store
+
+# Xcode
+# ---
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData/
+*.hmap
+*.ipa
+*.xcuserstate
+
+# Swift Package Manager
+# ---
+.build/
+
+# CocoaPods (If you ever use it, good to have)
+# ---
+Pods/
+
+# Fastlane (If you automate your App Store deployments later)
+# ---
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Environment Variables / Secrets
+# ---
+# Never commit your API keys or secrets!
+Secrets.xcconfig
+.env
+
 node_modules
 distnode_modules
 dist
